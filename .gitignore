@@ -1,0 +1,27 @@
+# Environments
+.venv/
+
+# Python cache
+__pycache__/
+
+# Secrets
+.env
+
+# Logs
+logs/
+*.log
+
+# Deployment archives
+deploy_archives/
+
+# Gemini CLI
+.gemini/
+
+# ADK
+.adk/
+
+# Archives
+*.tar.gz
+
+# Cloud Workstations
+.codeoss-cloudworkstations/

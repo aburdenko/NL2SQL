@@ -1,0 +1,5 @@
+google-cloud-aiplatform[agent_engines]
+google-adk
+google-genai
+google-cloud-geminidataanalytics
+pandas
