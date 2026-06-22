@@ -111,7 +111,9 @@ def query_agent(question, conversation_messages=None):
         'explanation': None,
         'thoughts': [],
         'progress_updates': [],
-        'all_text_responses': []
+        'all_text_responses': [],
+        'chart': None,
+        'suggested_questions': []
     }
     
     print("Iterating through response stream...")
@@ -132,18 +134,54 @@ def query_agent(question, conversation_messages=None):
         if data is not None:
             print(f"Found data in chunk {count}")
             results['data'] = data
+            
+        # Extract Chart
+        if hasattr(response.system_message, 'chart') and response.system_message.chart:
+            chart_res = response.system_message.chart.result
+            if chart_res and chart_res.vega_config:
+                def proto_to_dict(obj):
+                    if hasattr(obj, "items"):
+                        return {k: proto_to_dict(v) for k, v in obj.items()}
+                    elif hasattr(obj, "__iter__") and not isinstance(obj, (str, bytes)):
+                        return [proto_to_dict(x) for x in obj]
+                    else:
+                        return obj
+                results['chart'] = proto_to_dict(chart_res.vega_config)
+        
+        # Extract suggested questions (follow-up questions)
+        if hasattr(response.system_message, 'text') and response.system_message.text:
+            text_resp = response.system_message.text
+            type_val = text_resp.text_type
+            
+            def is_type(val, enum_name, enum_int):
+                if val == enum_name or val == enum_int:
+                    return True
+                if hasattr(val, 'name') and val.name == enum_name:
+                    return True
+                return False
+
+            if is_type(type_val, 'FOLLOWUP_QUESTIONS', 4):
+                results['suggested_questions'].extend(list(text_resp.parts))
         
         # Extract ALL text responses
         text = extract_text_from_response(response)
         if text:
             results['all_text_responses'].append(text)
             
-            if text['type'] == 'FINAL_RESPONSE':
+            type_val = text['type']
+            def is_type(val, enum_name, enum_int):
+                if val == enum_name or val == enum_int:
+                    return True
+                if hasattr(val, 'name') and val.name == enum_name:
+                    return True
+                return False
+
+            if is_type(type_val, 'FINAL_RESPONSE', 1):
                 print(f"Found FINAL_RESPONSE in chunk {count}")
                 results['explanation'] = text['content']
-            elif text['type'] == 'THOUGHT':
+            elif is_type(type_val, 'THOUGHT', 2):
                 results['thoughts'].append(text['content'])
-            elif text['type'] == 'PROGRESS_UPDATE':
+            elif is_type(type_val, 'PROGRESS_UPDATE', 3) or is_type(type_val, 'PROGRESS', 3):
                 results['progress_updates'].append(text['content'])
     
     print(f"--- query_agent finished ({count} chunks) ---")
@@ -152,43 +190,41 @@ def query_agent(question, conversation_messages=None):
 def call_claims_agent(question: str) -> str:
     """Queries the Claims Data Agent with a natural language question and returns the answer."""
     print(f"--- tool call: call_claims_agent('{question}') ---")
+    import json
     try:
         # We start a new conversation for each tool call
         response = query_agent(question)
         print(f"DEBUG: query_agent returned: {response}")
         
-        output = []
-        explanation = response.get('explanation')
-        if explanation:
-            output.append(explanation)
+        explanation = response.get('explanation') or ""
+        sql = response.get('sql') or ""
+        chart = response.get('chart')
+        suggested_questions = response.get('suggested_questions') or []
         
-        sql = response.get('sql')
-        if sql:
-             output.append(f"\nSQL Used: {sql}")
-             
+        data_records = []
         data = response.get('data')
         if data is not None and not data.empty:
-            output.append(f"\nData Retrieved:\n{data.to_string()}")
-        elif data is not None:
-            output.append("\nData Retrieved: (Empty)")
+            data_records = data.to_dict(orient="records")
             
-        final_output = "\n".join(output)
-        print(f"Tool call successful. Output length: {len(final_output)}")
+        if not explanation.strip() and response.get('all_text_responses'):
+            explanation = "\n".join([f"[{t.get('type')}]: {t.get('content')}" for t in response['all_text_responses']])
+            
+        structured_response = {
+            "explanation": explanation,
+            "sql": sql,
+            "data": data_records,
+            "chart": chart,
+            "suggested_questions": suggested_questions
+        }
         
-        if not final_output.strip():
-            print("WARNING: final_output is empty. Dumping all text responses as fallback.")
-            if response.get('all_text_responses'):
-                fallback_texts = [f"[{t.get('type')}]: {t.get('content')}" for t in response['all_text_responses']]
-                fallback_output = "\n".join(fallback_texts)
-                return f"Agent returned text, but no FINAL_RESPONSE. Here is the text:\n{fallback_output}"
-            return "The call_claims_agent executed successfully but returned an empty response. No text responses were found."
-            
+        final_output = json.dumps(structured_response, indent=2)
+        print(f"Tool call successful. Output length: {len(final_output)}")
         return final_output
     except Exception as e:
-        # Log the full exception to help with debugging
         logging.error(f"Error calling claims agent: {e}", exc_info=True)
-        # Return a meaningful error message to the agent model
-        return f"The tool failed with an error: {e}"
+        return json.dumps({
+            "error": f"The tool failed with an error: {e}"
+        })
 
 
 # --- Sample USAGE ---

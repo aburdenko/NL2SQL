@@ -132,13 +132,19 @@ else:
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     re_display_name = f"{RE_DISPLAY_NAME}_{timestamp}"
     
+    adk_bin = "adk"
+    python_dir = os.path.dirname(sys.executable)
+    potential_adk = os.path.join(python_dir, "adk")
+    if os.path.exists(potential_adk):
+        adk_bin = potential_adk
+
     # NOTE: --adk_app defines the generated entrypoint file. Do not use 'agent' as it overwrites your own agent.py
     deploy_command = (
-        f"adk deploy agent_engine {DEPLOY_DIR} "
+        f'"{adk_bin}" deploy agent_engine {DEPLOY_DIR} '
         f"--project={GCP_PROJECT_ID} "
         f"--region=us-central1 "
         f"--display_name={re_display_name} "
-        f"--env_file=.env"
+        f'--env_file="{os.path.abspath(".env")}"'
     )
     
     print(f"Running: {deploy_command}")
@@ -193,6 +199,19 @@ if not REASONING_ENGINE_RESOURCE_NAME:
 
 print(f"✅ Reasoning Engine ready: {REASONING_ENGINE_RESOURCE_NAME}")
 
+# Rename the reasoning engine to the clean version (without timestamp)
+print(f"Renaming reasoning engine to {RE_DISPLAY_NAME}...")
+try:
+    patch_url = f"https://us-central1-aiplatform.googleapis.com/v1beta1/{REASONING_ENGINE_RESOURCE_NAME}?updateMask=displayName"
+    patch_payload = {"displayName": RE_DISPLAY_NAME}
+    patch_resp = requests.patch(patch_url, headers=headers, json=patch_payload)
+    if patch_resp.status_code == 200:
+        print(f"✅ Successfully renamed reasoning engine to {RE_DISPLAY_NAME}")
+    else:
+        print(f"⚠️ Failed to rename reasoning engine: {patch_resp.status_code} - {patch_resp.text}")
+except Exception as e:
+    print(f"⚠️ Exception during renaming reasoning engine: {e}")
+
 # ==========================================
 # 4. Register with Gemini Enterprise
 # ==========================================
@@ -201,6 +220,18 @@ TARGET_APPS = [
     {"id": "nl2sql-agent-app-us", "loc": "us", "col": "default_collection"},
     {"id": "gemini-enterprise-17661519_1766151961003", "loc": "global", "col": "default_collection"}
 ]
+
+# Parse extra app IDs from environment
+env_apps_str = os.environ.get("GEMINI_ENTERPRISE_APP_IDS")
+if env_apps_str:
+    for app_id in env_apps_str.split(","):
+        app_id = app_id.strip()
+        if app_id and not any(a["id"] == app_id for a in TARGET_APPS):
+            TARGET_APPS.append({
+                "id": app_id,
+                "loc": "global",
+                "col": "default_collection"
+            })
 
 for app in TARGET_APPS:
     app_id, loc, col = app["id"], app["loc"], app["col"]

@@ -3,3 +3,4 @@ google-adk
 google-genai
 google-cloud-geminidataanalytics
 pandas
+google-cloud-storage

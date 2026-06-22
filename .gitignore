@@ -25,3 +25,4 @@ deploy_archives/
 
 # Cloud Workstations
 .codeoss-cloudworkstations/
+.scripts/configure.sh.bak
