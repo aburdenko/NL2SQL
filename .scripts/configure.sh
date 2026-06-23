@@ -311,11 +311,6 @@ if ! ./.venv/python3.12/bin/pip install --quiet --no-cache-dir -r requirements.t
   echo "ERROR: Failed to install dependencies from requirements.txt. Please check the file for errors." >&2
 fi
 
-echo "Installing project packages (Phase 1, 2, and 3) in editable mode..."
-# We run pip install from their respective folders to ensure relative paths resolve correctly
-(cd labs/phase1 && ../../.venv/python3.12/bin/pip install --quiet -e .)
-(cd labs/phase2 && ../../.venv/python3.12/bin/pip install --quiet -e .)
-(cd labs/phase3 && ../../.venv/python3.12/bin/pip install --quiet -e .)
 
 # --- Google Agent Development Kit Check ---
 # This ensures the necessary libraries for agent development (including RAG and LangChain support) are installed.
@@ -479,7 +474,6 @@ fi
 if command -v gemini &> /dev/null; then
     alias gemini="gemini -m $GEMINI_MODEL_NAME --yolo"
 fi
-npx --registry=https://registry.npmjs.org --yes skills install -y -g github.com/google/skills
 
 # --- VS Code Extension Setup (BigQuery / Data tools) ---
 echo "Checking for BigQuery querying capabilities..."
